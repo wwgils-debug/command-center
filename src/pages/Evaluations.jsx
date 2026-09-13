@@ -1,12 +1,6 @@
 import {useState} from "react"
 import LeaderCard from "../components/LeaderCard"
-import { leaders, roles } from "../data/mockData"
-
-const evaluationQuestions = [
-    { id: 1, text: "Communicates clearly with the team"},
-    { id: 2, text: "Provides effective leadership during shifts"},
-    { id: 3, text: "Treats team members with respect"},
-]
+import { leaders, roles, evaluationTemplate } from "../data/mockData"
 
 function Evaluations() {
    const [selectedRole, setSelectedRole] = useState("All")
@@ -14,9 +8,12 @@ function Evaluations() {
    const [answers, setAnswers] = useState({})
    const [comments, setComments] = useState("")
    const [submitted, setSubmitted] = useState(false)
+   const [submittedEvaluations, setSubmittedEvaluations] = useState([])
 
    const allQuestionsAnswered =
-        evaluationQuestions.every((question) => answers[question.id])
+        evaluationTemplate.questions
+        .filter((question) => question.required)
+        .every((question) => answers[question.id])
 
    const handleSubmit = () => {
         if (!allQuestionsAnswered) {
@@ -24,12 +21,22 @@ function Evaluations() {
         }
 
         const evaluation = {
+            id: crypto.randomUUID(),
             leaderId: selectedLeader.id,
+            templateId: selectedLeader.id,
+            templateVersion: evaluationTemplate.version,
             answers: answers,
             comments: comments,
+            status: "submitted",
         }
 
-     
+        console.log("Evaluation:", evaluation)
+
+        setSubmittedEvaluations([
+            ...submittedEvaluations,
+            evaluation,
+        ])
+
         setSubmitted(true)
         setAnswers({})
         setComments("")
@@ -61,28 +68,37 @@ function Evaluations() {
                         Back to Leaders
                     </button>
 
-                    {evaluationQuestions.map((question) => (
+                    {evaluationTemplate.questions.map((question) => (
                         <div key={question.id}>
-                            <p>{question.text}</p>
+                            <p>
+                                {question.text}
+                                {question.required && " *"}
+                            </p>
 
-                            {[1, 2, 3, 4, 5].map((score) => (
-                                <button
-                                    key={score}
-                                    onClick={() =>
-                                        setAnswers({
-                                            ...answers,
-                                        [question.id]: score,
-                                    })
-                                }
-                                style={{
-                                    fontWeight: answers[question.id] === score ? "bold" : "normal",
-                                }}
-                            >
-                                {score}
-                            </button>                                    
-                        ))}
-                    </div>
-                    ))} 
+                            {question.type === "rating" && (
+                                <>
+                                    {[1, 2, 3, 4, 5].map((score) => (
+                                        <button
+                                            key={score}
+                                            onClick={() =>
+                                                setAnswers({
+                                                    ...answers,
+                                                    [question.id]: score,
+                                                })
+                                            }
+                                            style={{
+                                                fontWeight: 
+                                                    answers[question.id] === score ? "bold" : "normal",
+                                            }}
+                                        >
+                                            {score}
+                                        </button>                                    
+                                        ))}
+                                    </>
+                                )}
+                        
+
+                    <p>* Required</p>
 
                     <textarea
                         placeholder="Additional comments"
@@ -108,6 +124,8 @@ function Evaluations() {
    return (
     <section>
         <h2>Evaluations</h2>
+        <p>Submitted evaluations: {submittedEvaluations.length}</p>
+
 
         {submitted && (
             <p>Evaluation submitted successfully.</p>
