@@ -1,4 +1,6 @@
-import {useState} from "react"
+import LeaderSummary from "../components/LeaderSummary"
+import EvaluationsTestData from "../components/EvaluationTestData"
+import {useState, useEffect } from "react"
 import LeaderCard from "../components/LeaderCard"
 import { leaders, roles, evaluationTemplate } from "../data/mockData"
 
@@ -8,7 +10,20 @@ function Evaluations() {
    const [answers, setAnswers] = useState({})
    const [comments, setComments] = useState("")
    const [submitted, setSubmitted] = useState(false)
-   const [submittedEvaluations, setSubmittedEvaluations] = useState([])
+   const [submittedEvaluations, setSubmittedEvaluations] = useState(() => {
+    const savedEvaluations = localStorage.getItem("submittedEvaluations")
+
+    return savedEvaluations
+        ? JSON.parse(savedEvaluations)
+        :[]
+   })
+
+   useEffect(()=> {
+        localStorage.setItem(
+            "submittedEvaluations",
+            JSON.stringify(submittedEvaluations)
+        )
+   }, [submittedEvaluations])
 
    const allQuestionsAnswered =
         evaluationTemplate.questions
@@ -23,7 +38,7 @@ function Evaluations() {
         const evaluation = {
             id: crypto.randomUUID(),
             leaderId: selectedLeader.id,
-            templateId: selectedLeader.id,
+            templateId: evaluationTemplate.id,
             templateVersion: evaluationTemplate.version,
             answers: answers,
             comments: comments,
@@ -96,6 +111,8 @@ function Evaluations() {
                                         ))}
                                     </>
                                 )}
+                            </div>
+                    ))}
                         
 
                     <p>* Required</p>
@@ -125,7 +142,35 @@ function Evaluations() {
     <section>
         <h2>Evaluations</h2>
         <p>Submitted evaluations: {submittedEvaluations.length}</p>
+        
+        <h3>Leader Summaries</h3>
 
+        {leaders.map((leader) => {
+            const leaderEvaluations = submittedEvaluations.filter(
+                (evaluation) => evaluation.leaderId === leader.id
+            )
+
+            if (leaderEvaluations.length === 0) {
+                return null
+            }
+
+            return (
+                <LeaderSummary
+                    key={leader.id}
+                    leader={leader}
+                    leaderEvaluations={leaderEvaluations}
+                    evaluationTemplate={evaluationTemplate}
+                />
+            )
+})}
+
+
+
+<EvaluationsTestData
+    submittedEvaluations={submittedEvaluations}
+    leaders={leaders}
+    evaluationTemplate={evaluationTemplate}
+/>
 
         {submitted && (
             <p>Evaluation submitted successfully.</p>

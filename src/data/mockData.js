@@ -19,16 +19,19 @@ export const evaluationTemplate = {
             id: 1, 
             text: "Communicates clearly with the team",
             required: true,
+            type: "rating",
         },
         {
             id: 2, 
             text: "Provides effective leadership during shifts",
             required: true,
+            type: "rating",
         },
         {
             id: 3, 
             text: "Treats team members with respect",
             required: true,
+            type: "rating",
         },
     ],
 }
