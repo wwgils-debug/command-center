@@ -12,6 +12,11 @@ function Navigation({ setCurrentPage }) {
             <button onClick={() => setCurrentPage('metrics')}>
                 Metrics
             </button>
+
+            <button onClick={() => setCurrentPage("results")}>
+                Results
+            </button>
+
         </nav>
     )
 }

@@ -4,19 +4,16 @@ import {useState, useEffect } from "react"
 import LeaderCard from "../components/LeaderCard"
 import { leaders, roles, evaluationTemplate } from "../data/mockData"
 
-function Evaluations() {
+function Evaluations({
+    submittedEvaluations,
+    setSubmittedEvaluations
+}) {
    const [selectedRole, setSelectedRole] = useState("All")
    const [selectedLeader, setSelectedLeader] = useState(null)
    const [answers, setAnswers] = useState({})
    const [comments, setComments] = useState("")
    const [submitted, setSubmitted] = useState(false)
-   const [submittedEvaluations, setSubmittedEvaluations] = useState(() => {
-    const savedEvaluations = localStorage.getItem("submittedEvaluations")
 
-    return savedEvaluations
-        ? JSON.parse(savedEvaluations)
-        :[]
-   })
 
    useEffect(()=> {
         localStorage.setItem(
