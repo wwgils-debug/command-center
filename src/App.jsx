@@ -11,11 +11,15 @@ function App() {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [submittedEvaluations, setSubmittedEvaluations] = useState(() => {
     const savedEvaluations = localStorage.getItem("submittedEvaluations")
+  
+
 
     return savedEvaluations
       ? JSON.parse(savedEvaluations)
       : []
   })
+
+     const [minimumResponses,  setMiniumResponses ] = useState(5)
 
   return (
     <main>
@@ -29,9 +33,14 @@ function App() {
           setSubmittedEvaluations={setSubmittedEvaluations}
         />
       )}
+
+
       {currentPage === 'metrics' && <Metrics />}
       {currentPage === "results" && (
-        <Results submittedEvaluations={submittedEvaluations} />
+        <Results 
+          submittedEvaluations={submittedEvaluations} 
+          minimumRespnses={minimumResponses}
+        />
       )}
     </main>
   )
