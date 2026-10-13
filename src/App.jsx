@@ -1,4 +1,4 @@
-import { useState} from 'react'
+import { useEffect, useState} from 'react'
 
 import Results from "./pages/Results"
 import Header from "./components/Header";
@@ -19,8 +19,18 @@ function App() {
       : []
   })
 
-     const [minimumResponses,  setMiniumResponses ] = useState(5)
+     const [minimumResponses,  setMinimumResponses ] = useState(() => {
+      const savedMinimumResponses = localStorage.getItem("minimumResponses")
 
+      return savedMinimumResponses
+        ? Number(savedMinimumResponses)
+        :5
+     })
+
+     useEffect(()=> {
+      localStorage.setItem("minimumResponses", minimumResponses)
+      }, [minimumResponses])
+      
   return (
     <main>
       <Header />
@@ -39,7 +49,8 @@ function App() {
       {currentPage === "results" && (
         <Results 
           submittedEvaluations={submittedEvaluations} 
-          minimumRespnses={minimumResponses}
+          minimumResponses={minimumResponses}
+          setMinimumResponses={setMinimumResponses}
         />
       )}
     </main>

@@ -3,6 +3,7 @@ function LeaderSummary({
     leaderEvaluations,
     evaluationTemplate,
 }) {
+
     const leaderScores = leaderEvaluations.map((evaluation) => {
         const scores = Object.values(evaluation.answers)
 
@@ -33,21 +34,6 @@ function LeaderSummary({
     }
 })
 
-    if (leaderEvaluations.length < 3) {
-        return (
-            <div>
-                <h3> {leader.name}</h3>
-
-                <p>
-                    Evaluations received: {leaderEvaluations.length}
-                </p>
-
-                <p>
-                    Results hidden until at least 3 evaluations are received.
-                </p>
-            </div>
-        )
-    }
     return (
         <div>
             <h3>{leader.name}</h3>

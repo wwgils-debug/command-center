@@ -35,3 +35,24 @@ export const evaluationTemplate = {
         },
     ],
 }
+
+export const evaluationTickets = [
+    {
+        id: "ticket-1",
+        leaderId: "leader-1",
+        windowId: "2026-fall",
+        used: false,
+    },
+    {
+        id: "ticket-2",
+        leaderId: "leader-2",
+        windowId: "2026-fall",
+        used: false,
+    },
+    {
+        id: "ticket-3",
+        leaderId: "leader-3",
+        windowId: "2026-fall",
+        used: false,
+    },
+]
