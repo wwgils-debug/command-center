@@ -7,3 +7,17 @@ main {
   padding: 24px;
 
 }
+
+@media print {
+    .leader-report {
+      break-after: page;
+    }
+
+    .leader-report:last-child {
+      break-after: auto;
+    }
+    
+    .no-print {
+        display: none;
+    }
+}

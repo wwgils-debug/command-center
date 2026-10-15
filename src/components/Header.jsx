@@ -1,6 +1,6 @@
 function Header() {
     return (
-        <header>
+        <header className="no-print">
             <h1>Command Center</h1>
         
         </header>

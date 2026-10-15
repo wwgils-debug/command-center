@@ -36,6 +36,8 @@ export const evaluationTemplate = {
     ],
 }
 
+export const activeWindowId = "2026-fall"
+
 export const evaluationTickets = [
     {
         id: "ticket-1",

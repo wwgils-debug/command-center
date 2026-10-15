@@ -5,12 +5,14 @@ import {
     roles, 
     evaluationTemplate,
     evaluationTickets,
+    activeWindowId,
  } from "../data/mockData"
 
 function Evaluations({
     submittedEvaluations,
     setSubmittedEvaluations
 }) {
+   console.log("Active window:", activeWindowId)
    const [selectedRole, setSelectedRole] = useState("All")
    const [selectedLeader, setSelectedLeader] = useState(null)
    const [answers, setAnswers] = useState({})
@@ -40,7 +42,7 @@ function Evaluations({
         JSON.stringify(tickets)
     )
    }, [tickets])
-   
+
 
    const allQuestionsAnswered =
         evaluationTemplate.questions
@@ -51,14 +53,26 @@ function Evaluations({
         if (!allQuestionsAnswered) {
             return
         }
+        const availableTicket = tickets.find(
+            (ticket) =>
+                ticket.leaderId === selectedLeader.id &&
+                ticket.windowId === activeWindowId &&
+                ticket.used === false
+        )
+        
+        if (!availableTicket) {
+            setTicketMessage("No valid evaluation ticket is available.")
+            return
+        }
 
         const evaluation = {
             id: crypto.randomUUID(),
             leaderId: selectedLeader.id,
+            windowId: activeWindowId,
             templateId: evaluationTemplate.id,
             templateVersion: evaluationTemplate.version,
             answers: answers,
-            comments: comments,
+            comments: comments.trim(),
             status: "submitted",
         }
 
@@ -70,12 +84,11 @@ function Evaluations({
         ])
         setTickets(
             tickets.map((ticket) =>
-                ticket.leaderId === selectedLeader.id && ticket.used === false
-                    ? { ...ticket, used: true }
-                    : ticket
+                ticket.id === availableTicket.id
+                    ? {...ticket, used: true}
+                    :ticket
             )
         )
-
         setSubmitted(true)
         setAnswers({})
         setComments("")
@@ -93,9 +106,17 @@ function Evaluations({
             return (
                 <section>
                     <h2>Leadership Evaluation</h2>
+                    
+                    <p>
+                        Evaluation window: {activeWindowId}
+                    </p>
 
                     <p>
                         Evaluating: {selectedLeader.name} - {role?.name}
+                    </p>
+
+                    <p>
+                        Rating scale: 1 = Needs Improvement, 5 = Excellent
                     </p>
 
                     <button onClick={() => {
@@ -138,8 +159,11 @@ function Evaluations({
                             </div>
                     ))}
                         
-
                     <p>* Required</p>
+                    
+                    <p>
+                        Additional comments (optional)
+                    </p>
 
                     <textarea
                         placeholder="Additional comments"
@@ -165,7 +189,32 @@ function Evaluations({
    return (
     <section>
         <h2>Evaluations</h2>
-        <p>Submitted evaluations: {submittedEvaluations.length}</p>
+
+        <p>
+            Evaluation window: {activeWindowId}
+        </p>
+
+        <p>
+            Submitted evaluations for thie window:{
+                submittedEvaluations.filter(
+                    (evaluation) => evaluation.windowId === activeWindowId
+                ).length
+            }
+        </p>
+        <button
+            onClick={() => {
+                setTickets(evaluationTickets)
+                setTicketMessage("Test tickets reset.")
+            }}
+        >
+
+        Development: Reset Test Tickets
+    </button>
+
+    <p>
+        Testing tool only - restores mock evaluation tickets.
+    </p>
+
         {ticketMessage && (
             <p>{ticketMessage}</p>
         )}
@@ -173,13 +222,17 @@ function Evaluations({
        
 
         {submitted && (
-            <p>Evaluation submitted successfully.</p>
+
+            <p>
+                Evaluation submitted successfully. Your evaluation ticket has been used.
+            </p>
         )}
 
-        <p>Leaders loaded: {leaders.length}</p>
-        <p>Filtered leaders: {filteredLeaders.length}</p>
+        
 
         <label>
+            <h3>Select a Leader to Evaluate</h3>
+
             Leadership Level:
             <select
                 value={selectedRole}
@@ -197,16 +250,32 @@ function Evaluations({
 
         {filteredLeaders.map((leader) => {
             const role = roles.find((role) => role.id === leader.roleId)
+
+            const hasAvailableTicket = tickets.some(
+                (ticket) =>
+                    ticket.leaderId === leader.id &&
+                    ticket.windowId === activeWindowId &&
+                    ticket.used === false
+            )
         
             return (
             <LeaderCard
                 key={leader.id}
                 name={leader.name}
                 role={role?.name}
+                disabled={!hasAvailableTicket}
+                ticketStatus={
+                    hasAvailableTicket
+                        ? "Evaluation available"
+                        : "No evaluation available"
+                }
                 onStart={() => {
+                    console.log("Tickets:", tickets)
+                    console.log("Active window:", activeWindowId)
                     const availableTicket = tickets.find(
                         (ticket) =>
                             ticket.leaderId === leader.id &&
+                            ticket.windowId === activeWindowId &&
                             ticket.used === false
                     )
 

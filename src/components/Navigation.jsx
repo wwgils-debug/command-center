@@ -1,6 +1,6 @@
 function Navigation({ setCurrentPage }) {
     return (
-        <nav>
+        <nav className="no-print">
             <button onClick={() => setCurrentPage('dashboard')}>
                 Dashboard
             </button>

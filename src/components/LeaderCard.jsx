@@ -1,9 +1,17 @@
-function LeaderCard({ name, role, onStart}) {
+function LeaderCard({ name, role, onStart, disabled, ticketStatus}) {
     return (
         <div>
             <h3>{name}</h3>
             <p>{role}</p>
-            <button onClick={onStart}>Start Evaluation</button>
+            <p>{ticketStatus}</p>
+            
+            <button 
+                onClick={onStart}
+                disabled={disabled}
+            >
+                {disabled ? "No Ticket Available" : "Start Evaluation"}
+            </button>
+
         </div>
     )
 }
