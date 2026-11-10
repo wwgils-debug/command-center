@@ -1,20 +1,63 @@
-import { useState } from "react"
-import LeaderSummary from "../components/LeaderSummary"
-import { leaders, roles, evaluationTemplate, activeWindowId } from "../data/mockData"
+import { useEffect, useState } from "react"
+import CloudLeaderSummary from "../components/CloudLeaderSummary"
+import { supabase } from "../lib/supabase"
+
+
 function Results({
-    submittedEvaluations,  
+    storeId,
     minimumResponses,
     setMinimumResponses,
-   
-    
- }) {
-
+}) {
      const [selectedRole, setSelectedRole] = useState("All")
      const [selectedLeaderId, setSelectedLeaderId] = useState("All")
+     const [report, setReport] = useState(null)
+     const [reportError, setReportError] = useState("")
+
+     useEffect(() => {
+        if (!storeId) return
+
+        let active = true
+
+        async function loadReport() {
+            try {
+                const { data: window, error: windowError } = await supabase
+                    .from("evaluation_windows")
+                    .select("id")
+                    .eq("store_id", storeId)
+                    .lte("starts_at", new Date().toISOString())
+                    .order("starts_at", { ascending:false })
+                    .order("id")
+                    .limit(1)
+                    .maybeSingle()
+
+                    if (windowError) throw windowError
+                    if (!window) throw new Error("No evaluation window is available for results.")
+                const { data, error} = await supabase.rpc("get_evaluation_report", {
+                    p_window_it: window.id,
+                })
+
+                if (error) throw error
+                if (active) setReport(data)
+            } catch (error) {
+                if (active) setReportError(error.message)
+            }
+        }
+
+        loadReport()
+
+        return () => {
+            active = false
+        }
+
+     }, [storeId])
+
+    const liveLeaders = report?.leaders ?? []
+    const positionNames = [...new Set(liveLeaders.map((leader) => leader.positionName))]
+
     const filteredLeaders =
-        selectedRole === "All"
-            ? leaders
-            : leaders.filter((leader) => leader.roleId === selectedRole)
+     selectedRole === "All"
+        ? liveLeaders
+        : liveLeaders.filter((leader) => leader.positionName === selectedRole)
 
     const reportLeaders =
         selectedLeaderId === "All"
@@ -23,13 +66,18 @@ function Results({
                 (leader) => leader.id === selectedLeaderId
             )
 
+    function canShowReport(leader) {
+        return leader.ready && leader.responseCount >= minimumResponses
+    }
     return ( 
         <section>
             <h2 className="no-print"> Evaluation Results</h2>
+            {reportError && <p role="alert">{reportError}</p>}
 
-                <p>
-                    Evaluation window: {activeWindowId}
-                </p>
+            {report && (
+                <p>Evaluation window: {report.windowName}</p>
+            )}
+            
         <div className="no-print">
             <label>
                 Leader:
@@ -60,9 +108,9 @@ function Results({
                  
                     <option value="All">All</option>
 
-                    {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                            {role.name}
+                    {positionNames.map((positionName) => (
+                        <option key={positionName} value={positionName}>
+                            {positionName}
                         </option>
                     ))}
                     </select>
@@ -94,71 +142,28 @@ function Results({
         <div className="no-print">
             <h3>Response Status</h3>
 
-            {reportLeaders.map((leader) => {
-                const leaderEvaluations = submittedEvaluations.filter(
-                    (evaluation) =>
-                        evaluation.leaderId === leader.id &&
-                        evaluation.windowId === activeWindowId
-                )
+            {reportLeaders.map((leader) => (
+                <p key={leader.id}>
+                    {leader.name}: {leader.responseCount} responses
+                    {" - "}
+                    {canShowReport(leader)
+                        ? "Ready to display results"
+                        : "Not enough responses"}
+                </p>
+            ))}
 
-                const responsesNeeded = 
-                    minimumResponses - leaderEvaluations.length
-
-                   if (responsesNeeded <= 0) {
-                    return (
-                        <p key={leader.id}>
-                            {leader.name}: {leaderEvaluations.length} responses - Ready to display results
-                        </p>
-                    )
-                   } 
-
-                   return (
-                    <p key={leader.id}>
-                        {leader.name}: {leaderEvaluations.length} responses - {responsesNeeded} more response
-                        {responsesNeeded === 1 ? "" : "s"} needed
-                    </p>
-                   )
-            })}
+      
         </div>
 
-            {!reportLeaders.some((leader) => {
-                const leaderEvaluations = submittedEvaluations.filter(
-                    (evaluation) => 
-                        evaluation.leaderId === leader.id &&
-                        evaluation.windowId === activeWindowId
-                )
+           {report && !reportLeaders.some(canShowReport) && (
+            <p>No leaders currently have enough responses to display results.</p>
+           )}
 
-                return leaderEvaluations.length >= minimumResponses
-            }) && (
-
-                
-                <p>
-                    No leaders currently have enough responses to display results.
-                </p>
-            )}
-
-        
-            {reportLeaders.map((leader) => {
-                const leaderEvaluations = submittedEvaluations.filter(
-                    (evaluation) => 
-                        evaluation.leaderId === leader.id &&
-                        evaluation.windowId === activeWindowId
-                )
-
-                if (leaderEvaluations.length < minimumResponses) {
-                    return null
-                }
-
-                return (
-                    <LeaderSummary
-                    key={leader.id}
-                    leader={leader}
-                    leaderEvaluations={leaderEvaluations}
-                    evaluationTemplate={evaluationTemplate}
-                    roles={roles}
-                />
-            ) 
-        })}
+           {reportLeaders
+            .filter(canShowReport)
+            .map((leader) => (
+                <CloudLeaderSummary key={leader.id} leader={leader} />
+            ))}
         </section>
     )
 }

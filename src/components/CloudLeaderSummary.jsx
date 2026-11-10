@@ -38,6 +38,14 @@ function CloudLeaderSummary({ leader }) {
                 </p>
              )}
 
+             {lowest && (
+                <p>
+                    Lowest-rated area: {lowest.text}
+                    {" - "}
+                    {formatScore(lowest.average)} / 5.00
+                </p>
+             )}
+
             <h4>Quesiton Averages</h4>
 
             {questions.map((question) => (

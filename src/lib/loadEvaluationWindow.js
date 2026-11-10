@@ -30,16 +30,16 @@ export async function loadEvaluationWindow(storeId) {
     if (error) throw error
 
     if (windows.length === 0) {
-        throw new Error("No evaluation window is currnelty open.")
+        throw new Error("No evaluation window is currently open.")
     }
 
     if (windows.length > 1) {
-        throw new Error("Multiple evaluation windowsd are open. Window selectin is required.")
+        throw new Error("Multiple evaluation windowsd are open. Window selection is required.")
     }
     const window = windows[0]
 
     if (!window.template) {
-        throw new Error("This eindow has no accesbile questionnaire")
+        throw new Error("This window has no accesbile questionnaire")
     }
             
     const questions = [...window.template.questions]

@@ -17,15 +17,7 @@ function App() {
   const [loadingStores, setLoadingStores] = useState(false)
   const [storeError, setStoreError] = useState("")
   const [currentPage, setCurrentPage] = useState('dashboard')
-  const [submittedEvaluations, setSubmittedEvaluations] = useState(() => {
-    const savedEvaluations = localStorage.getItem("submittedEvaluations")
-  
 
-
-    return savedEvaluations
-      ? JSON.parse(savedEvaluations)
-      : []
-  })
 
      const [minimumResponses,  setMinimumResponses ] = useState(() => {
       const savedMinimumResponses = localStorage.getItem("minimumResponses")
@@ -172,13 +164,11 @@ useEffect(() => {
 
 
       <Navigation setCurrentPage={setCurrentPage}/>
-      
       {currentPage === 'dashboard' && <Dashboard />}
       {currentPage === 'evaluations' && (
         <Evaluations
           storeId={stores.length === 1 ? stores[0].id : null}
-          submittedEvaluations={submittedEvaluations}
-          setSubmittedEvaluations={setSubmittedEvaluations}
+
         />
       )}
 
@@ -186,7 +176,7 @@ useEffect(() => {
       {currentPage === 'metrics' && <Metrics />}
       {currentPage === "results" && (
         <Results 
-          submittedEvaluations={submittedEvaluations} 
+          storeId={stores.length === 1 ? stores[0].id : null}
           minimumResponses={minimumResponses}
           setMinimumResponses={setMinimumResponses}
         />

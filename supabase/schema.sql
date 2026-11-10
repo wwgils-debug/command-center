@@ -63,7 +63,7 @@ begin
   select *
   into v_window
   from public.evaluation_windows
-  where id = p_window_id;
+  where id = p_window_it;
 
   if not found then 
     raise exception 'Evaluation window not found.';
@@ -89,7 +89,7 @@ begin
     with responses as (
       select *
       from private.evaluations
-      where window_id = p_window_id
+      where window_id = p_window_it
         and template_id = v_window.template_id
     ),
 
@@ -105,7 +105,7 @@ begin
         ) as response_count
       from public.leaders as leaders
       join public.positions as positions
-        on positions.id = leaders.positions_id
+        on positions.id = leaders.position_id
       where positions.store_id = v_window.store_id   
     )
     select jsonb_build_object(

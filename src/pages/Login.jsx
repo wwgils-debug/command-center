@@ -21,7 +21,7 @@ function Login() {
             if (error) {
                 setErrorMessage(error.message)
             }
-        } catch {
+        } catch (error) {
             setErrorMessage(error.message)
         } finally {
             setLoading(false)
