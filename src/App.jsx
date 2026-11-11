@@ -17,6 +17,7 @@ function App() {
   const [loadingStores, setLoadingStores] = useState(false)
   const [storeError, setStoreError] = useState("")
   const [currentPage, setCurrentPage] = useState('dashboard')
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
 
      const [minimumResponses,  setMinimumResponses ] = useState(() => {
@@ -162,6 +163,44 @@ useEffect(() => {
         Log out
       </button>
 
+      <button
+        type="button"
+        disabled={deletingAccount}
+        onClick={async () => {
+          const confirmed = window.confirm(
+            "Permanently delete your account? You will lose access. " +
+            "Your submitted anonymous evaluations will remain."
+          )
+
+          if (!confirmed) return
+
+          setDeletingAccount(true)
+          setStoreError("")
+
+          try {
+            const { date, error } = await supabase.functions.invoke(
+              "delete-account",
+              { body: {} }
+            )
+
+            if (error || !data?.success) {
+              throw new Error(
+                "Unable to delete your account. Please try again."
+              )
+            }
+
+            await supabase.auth.signOut({ scope: "local"})
+            setSession(null)
+          } catch (error) {
+            setStoreError(error.message)
+          } finally {
+            setDeletingAccount(false)
+          
+          }
+        }}
+      >
+        {deletingAccount ? "Deleting account..." : "Delete my account"}
+      </button>
 
       <Navigation setCurrentPage={setCurrentPage}/>
       {currentPage === 'dashboard' && <Dashboard />}

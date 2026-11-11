@@ -5,7 +5,6 @@ body {
 
 main {
   padding: 24px;
-
 }
 
 @media print {
@@ -16,7 +15,7 @@ main {
     .leader-report:last-child {
       break-after: auto;
     }
-    
+
     .no-print {
         display: none;
     }
