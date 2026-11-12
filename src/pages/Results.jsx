@@ -12,6 +12,9 @@ function Results({
      const [selectedLeaderId, setSelectedLeaderId] = useState("All")
      const [report, setReport] = useState(null)
      const [reportError, setReportError] = useState("")
+     const [demoSettings, setDemoSettings] = useState(null)
+     const [changingDemoMode, setChangingDemoMode] = useState(false)
+     const [refreshKey, setRefreshKey] =useState(0)
 
      useEffect(() => {
         if (!storeId) return
@@ -20,6 +23,18 @@ function Results({
 
         async function loadReport() {
             try {
+                setReportError("")
+
+                const { data: settings, error: settingsError } =
+                    await supabase.rpc("get_demo_report_settings", {
+                        p_store_id: storeId,
+                    })
+
+                if (settingsError) throw settingsError
+                if (active) setDemoSettings(settings)
+
+                
+
                 const { data: window, error: windowError } = await supabase
                     .from("evaluation_windows")
                     .select("id")
@@ -49,7 +64,7 @@ function Results({
             active = false
         }
 
-     }, [storeId])
+     }, [storeId, refreshKey])
 
     const liveLeaders = report?.leaders ?? []
     const positionNames = [...new Set(liveLeaders.map((leader) => leader.positionName))]
@@ -73,6 +88,47 @@ function Results({
         <section>
             <h2 className="no-print"> Evaluation Results</h2>
             {reportError && <p role="alert">{reportError}</p>}
+            
+            {demoSettings?.canToggle && (
+                <div className="no-print">
+                    <p>
+                        Live demo reports: {demoSettings.liveReports ? "On" : "Off"}
+                    </p>
+
+                    <button
+                        type="button"
+                        disabled={changingDemoMode}
+                        onClick={async () => {
+                            setChangingDemoMode(true)
+                            setReportError("")
+
+                            try {
+                                const { error } = await supabase.rpc(
+                                    "set_demo_live_reports",
+                                    {
+                                        p_enabled: !demoSettings.liveReports,
+                                    }
+                                )
+
+                                if (error) throw error
+
+                                setRefreshKey((current) => current + 1)
+                            } catch (error) {
+                                setReportError(error.message)
+                            } finally {
+                                setChangingDemoMode(false)
+                            }
+                        }}
+                    >
+
+                        {changingDemoMode
+                            ? "Updating..."
+                            : demoSettings.liveReports
+                                ? "Turn live demo off"
+                                : "Turn live demo on"}
+                    </button>
+                </div>
+            )}
 
             {report && (
                 <p>Evaluation window: {report.windowName}</p>
