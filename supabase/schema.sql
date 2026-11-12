@@ -13,6 +13,13 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
+CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
+
+
+
+
+
+
 CREATE SCHEMA IF NOT EXISTS "private";
 
 
@@ -51,6 +58,174 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
 
 
 
+CREATE OR REPLACE FUNCTION "private"."release_evaluation_batches"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+    v_day date :=
+        (now() at time zone 'America/Chicago')::date;
+    v_cutoff timestamptz :=
+        v_day::timestamp at time zone 'America/Chicago';
+    v_window record;
+    v_leader_id uuid;
+    v_last_day date;
+    v_waiting bigint;
+begin
+    -- Prevent two release jobs from running together.
+    perform pg_advisory_xact_lock(731042, 1);
+
+    for v_window in
+        select id, ends_at, template_id
+        from public.evaluation_windows
+        where starts_at <= v_cutoff
+        order by id
+        for update
+    loop
+        -- The window lock also coordinates with submissions.
+        for v_leader_id in
+            select distinct leader_id
+            from private.evaluations
+            where window_id = v_window.id
+              and template_id = v_window.template_id
+              and report_released = false
+        loop
+            select last_checked_day
+            into v_last_day
+            from private.report_release_state
+            where window_id = v_window.id
+              and leader_id = v_leader_id;
+
+            if v_last_day = v_day then
+                continue;
+            end if;
+
+            if v_window.ends_at <= v_cutoff then
+                -- Closed period: include every remaining response.
+                -- The report still enforces its minimum threshold.
+                update private.evaluations
+                set report_released = true
+                where window_id = v_window.id
+                  and template_id = v_window.template_id
+                  and leader_id = v_leader_id
+                  and report_released = false;
+            else
+                select count(*)
+                into v_waiting
+                from private.evaluations
+                where window_id = v_window.id
+                  and template_id = v_window.template_id
+                  and leader_id = v_leader_id
+                  and report_released = false;
+
+                -- Publish at least five and reserve five.
+                if v_waiting >= 10 then
+                    update private.evaluations
+                    set report_released = true
+                    where id in (
+                        select id
+                        from private.evaluations
+                        where window_id = v_window.id
+                          and template_id = v_window.template_id
+                          and leader_id = v_leader_id
+                          and report_released = false
+                        order by id
+                        limit (v_waiting - 5)
+                    );
+                end if;
+            end if;
+
+            insert into private.report_release_state (
+                window_id, leader_id, last_checked_day
+            )
+            values (
+                v_window.id, v_leader_id, v_day
+            )
+            on conflict (window_id, leader_id)
+            do update
+            set last_checked_day = excluded.last_checked_day;
+        end loop;
+    end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."release_evaluation_batches"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."add_demo_membership"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  insert into public.store_memberships (
+    store_id,
+    user_id,
+    active,
+    can_evaluate,
+    can_view_reports,
+    can_manage_store
+  )
+    values (
+        'd03fe786-6a0f-4d2c-91a9-d5b07578f2cf',
+        new.id,
+        true,
+        true,
+        false,
+        false
+    );
+
+    return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."add_demo_membership"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_demo_report_settings"("p_store_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+    if not exists (
+        select 1
+        from public.store_memberships
+        where store_id = p_store_id
+          and user_id = auth.uid()
+          and active = true
+          and can_view_reports = true
+    ) then
+        raise exception 'You do not have permission to view reports.';
+    end if;
+
+    return jsonb_build_object(
+        'liveReports',
+        coalesce((
+            select live_reports
+            from private.demo_report_settings
+            where store_id = p_store_id
+        ), false),
+        'canToggle',
+        exists (
+            select 1
+            from private.demo_report_settings as settings
+            join public.store_memberships as membership
+                on membership.store_id = settings.store_id
+               and membership.user_id = settings.owner_user_id
+            where settings.store_id = p_store_id
+              and settings.owner_user_id = auth.uid()
+              and membership.active = true
+              and membership.can_manage_store = true
+        )
+    );
+end;
+$$;
+
+
+ALTER FUNCTION "public"."get_demo_report_settings"("p_store_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_evaluation_report"("p_window_it" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -59,6 +234,7 @@ declare
   v_window public.evaluation_windows%rowtype;
   v_minimum integer;
   v_report jsonb;
+  v_live_reports boolean := false;
 begin
   select *
   into v_window
@@ -86,11 +262,22 @@ begin
     from public.stores
     where id = v_window.store_id;
 
+    select coalesce((
+      select settings.live_reports
+      from private.demo_report_settings as settings
+      where settings.store_id = v_window.store_id
+    ), false)
+    into v_live_reports;
+
     with responses as (
       select *
       from private.evaluations
       where window_id = p_window_it
         and template_id = v_window.template_id
+        and (
+          report_released = true
+          or v_live_reports = true
+        )
     ),
 
     leader_reports as (
@@ -294,6 +481,41 @@ $$;
 ALTER FUNCTION "public"."rls_auto_enable"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_demo_live_reports"("p_enabled" boolean) RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+    if p_enabled is null then
+        raise exception 'Choose enabled or disabled.';
+    end if;
+
+    update private.demo_report_settings as settings
+    set live_reports = p_enabled
+    where settings.store_id =
+        'd03fe786-6a0f-4d2c-91a9-d5b07578f2cf'
+      and settings.owner_user_id = auth.uid()
+      and exists (
+          select 1
+          from public.store_memberships as membership
+          where membership.store_id = settings.store_id
+            and membership.user_id = auth.uid()
+            and membership.active = true
+            and membership.can_manage_store = true
+      );
+
+    if not found then
+        raise exception 'Only the demo owner can change this setting.';
+    end if;
+
+    return p_enabled;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_demo_live_reports"("p_enabled" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."submit_evaluation"("p_token" "text", "p_answers" "jsonb", "p_comments" "text" DEFAULT ''::"text") RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -415,6 +637,16 @@ SET default_tablespace = '';
 SET default_table_access_method = "heap";
 
 
+CREATE TABLE IF NOT EXISTS "private"."demo_report_settings" (
+    "store_id" "uuid" NOT NULL,
+    "owner_user_id" "uuid" NOT NULL,
+    "live_reports" boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE "private"."demo_report_settings" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "private"."evaluation_tickets" (
     "token_hash" "text" NOT NULL,
     "leader_id" "uuid" NOT NULL,
@@ -433,12 +665,23 @@ CREATE TABLE IF NOT EXISTS "private"."evaluations" (
     "template_id" "uuid" NOT NULL,
     "answers" "jsonb" NOT NULL,
     "comments" "text" DEFAULT ''::"text" NOT NULL,
+    "report_released" boolean DEFAULT false NOT NULL,
     CONSTRAINT "evaluations_answers_check" CHECK (("jsonb_typeof"("answers") = 'object'::"text")),
     CONSTRAINT "evaluations_comments_check" CHECK (("length"("comments") <= 5000))
 );
 
 
 ALTER TABLE "private"."evaluations" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."report_release_state" (
+    "window_id" "uuid" NOT NULL,
+    "leader_id" "uuid" NOT NULL,
+    "last_checked_day" "date" NOT NULL
+);
+
+
+ALTER TABLE "private"."report_release_state" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."ticket_issuance" (
@@ -559,6 +802,11 @@ CREATE TABLE IF NOT EXISTS "public"."stores" (
 ALTER TABLE "public"."stores" OWNER TO "postgres";
 
 
+ALTER TABLE ONLY "private"."demo_report_settings"
+    ADD CONSTRAINT "demo_report_settings_pkey" PRIMARY KEY ("store_id");
+
+
+
 ALTER TABLE ONLY "private"."evaluation_tickets"
     ADD CONSTRAINT "evaluation_tickets_pkey" PRIMARY KEY ("token_hash");
 
@@ -566,6 +814,11 @@ ALTER TABLE ONLY "private"."evaluation_tickets"
 
 ALTER TABLE ONLY "private"."evaluations"
     ADD CONSTRAINT "evaluations_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "private"."report_release_state"
+    ADD CONSTRAINT "report_release_state_pkey" PRIMARY KEY ("window_id", "leader_id");
 
 
 
@@ -644,6 +897,10 @@ ALTER TABLE ONLY "public"."stores"
 
 
 
+CREATE INDEX "evaluations_report_release_idx" ON "private"."evaluations" USING "btree" ("window_id", "leader_id", "report_released");
+
+
+
 CREATE INDEX "evaluations_window_leader_idx" ON "private"."evaluations" USING "btree" ("window_id", "leader_id");
 
 
@@ -653,6 +910,11 @@ CREATE INDEX "leaders_positions_id_idx" ON "public"."leaders" USING "btree" ("po
 
 
 CREATE INDEX "store_memberships_user_id_idx" ON "public"."store_memberships" USING "btree" ("user_id");
+
+
+
+ALTER TABLE ONLY "private"."demo_report_settings"
+    ADD CONSTRAINT "demo_report_settings_store_id_fkey" FOREIGN KEY ("store_id") REFERENCES "public"."stores"("id");
 
 
 
@@ -681,13 +943,23 @@ ALTER TABLE ONLY "private"."evaluations"
 
 
 
+ALTER TABLE ONLY "private"."report_release_state"
+    ADD CONSTRAINT "report_release_state_leader_id_fkey" FOREIGN KEY ("leader_id") REFERENCES "public"."leaders"("id");
+
+
+
+ALTER TABLE ONLY "private"."report_release_state"
+    ADD CONSTRAINT "report_release_state_window_id_fkey" FOREIGN KEY ("window_id") REFERENCES "public"."evaluation_windows"("id");
+
+
+
 ALTER TABLE ONLY "private"."ticket_issuance"
     ADD CONSTRAINT "ticket_issuance_leader_id_fkey" FOREIGN KEY ("leader_id") REFERENCES "public"."leaders"("id");
 
 
 
 ALTER TABLE ONLY "private"."ticket_issuance"
-    ADD CONSTRAINT "ticket_issuance_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+    ADD CONSTRAINT "ticket_issuance_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -732,7 +1004,7 @@ ALTER TABLE ONLY "public"."store_memberships"
 
 
 ALTER TABLE ONLY "public"."store_memberships"
-    ADD CONSTRAINT "store_memberships_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+    ADD CONSTRAINT "store_memberships_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -741,10 +1013,16 @@ ALTER TABLE ONLY "public"."stores"
 
 
 
+ALTER TABLE "private"."demo_report_settings" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "private"."evaluation_tickets" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."evaluations" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."report_release_state" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."ticket_issuance" ENABLE ROW LEVEL SECURITY;
@@ -819,6 +1097,9 @@ ALTER TABLE "public"."stores" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
 
 
 GRANT USAGE ON SCHEMA "public" TO "postgres";
@@ -975,6 +1256,40 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REVOKE ALL ON FUNCTION "private"."release_evaluation_batches"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "public"."add_demo_membership"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "public"."get_demo_report_settings"("p_store_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."get_demo_report_settings"("p_store_id" "uuid") TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."get_evaluation_report"("p_window_it" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_evaluation_report"("p_window_it" "uuid") TO "authenticated";
 
@@ -985,8 +1300,19 @@ GRANT ALL ON FUNCTION "public"."issue_evaluation_ticket"("p_leader_id" "uuid", "
 
 
 
+REVOKE ALL ON FUNCTION "public"."set_demo_live_reports"("p_enabled" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_demo_live_reports"("p_enabled" boolean) TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."submit_evaluation"("p_token" "text", "p_answers" "jsonb", "p_comments" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."submit_evaluation"("p_token" "text", "p_answers" "jsonb", "p_comments" "text") TO "anon";
+
+
+
+
+
+
 
 
 
